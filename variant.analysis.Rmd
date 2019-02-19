@@ -1,0 +1,573 @@
+---
+title: "Mammaseq - SNV and CNV Analysis"
+author: "Lee-Oesterreich LAB - Osama Shiraz Shah @ https://leeoesterreich.org"
+date: "January 7, 2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+# PARTS OF THE CODE ARE ADAPTED FROM "MammaSeq.Github.R" @ https://github.com/smithng1215/MammaSeq_2018
+
+
+## CRAVAT JOB SUBMISSION (RUN ONCE)
+# 1. Submit job for vcfFile
+# 2. Wait for the job to complete
+# 3. Save file as csv
+
+```{python}
+
+# LOAD LIBRARIES
+import sys, re, requests, zipfile, os, glob, warnings, time
+
+# VCF FILE PATH
+vcfFile = "TSVC_variants_combined.vcf"
+
+# STEP 1: SUBMIT CHASM JOB
+r=requests.post('http://www.cravat.us/CRAVAT/rest/service/submit', files={'inputfile':open(vcfFile)}, 
+                data={'email':'osamashirazshah@gmail.com','analyses':'CHASM;VEST', 'hg19':'on', 'functionalannotation':'on'})
+                
+# GET JOB ID
+re0='"jobid":"(.*?)","resultfileurl'; rg0 = re.compile(re0,re.IGNORECASE|re.DOTALL); infO = rg0.findall(r.text)
+
+# STEP 2: CHECK JOB STATUS AND DOWNLOAD RESULTS
+status = 'wait'; waitime = 0
+print('Job Summitted')
+while status != 'Success':
+    r1 = requests.get('http://www.cravat.us/CRAVAT/rest/service/status', params={'jobid':infO[0]})
+    re3 = '"status":"(.*?)","errormsg"'; rg1 = re.compile(re3,re.IGNORECASE|re.DOTALL); status = rg1.findall(r1.text)
+    status = status[0]; waitime = waitime + 1; time.sleep(1); print('Seconds passed: ', str(waitime)); 
+    if waitime > 600:
+        break
+print('Job Finished')
+
+# GET URL FROM RESULT FILE URL FIELD
+re1 = '"resultfileurl":"(.*?)","email"'; rg1 = re.compile(re1,re.IGNORECASE|re.DOTALL); info2 = rg1.findall(r1.text) 
+
+# GET FILE NAME
+re2 = "(osamashirazshah)(.*?)(/)"; rg2 = re.compile(re2,re.IGNORECASE|re.DOTALL); info3 = rg2.findall(info2[0])
+fileName = info3[0][0]+info3[0][1]+'.zip'
+
+# STEP 3: UNZIP FILE
+
+import urllib.request as urlReq;
+urlReq.urlretrieve(info2[0], fileName)
+
+# UNZIP
+with zipfile.ZipFile(fileName, 'r') as zip_ref:
+    zip_ref.extractall('')
+os.remove(fileName) # Delete zip
+
+# GET FILE PATH
+cwd = os.getcwd(); paritalfilePath = info3[0][0] + info3[0][1] + os.sep;
+print(info3[0][0])
+
+filePath = glob.glob(paritalfilePath +'*.xls')
+print(paritalfilePath)
+
+# STEP 4: SAVE AS CSV
+import pandas as pd
+import numpy as np
+cravatXls =pd.ExcelFile(filePath[0])
+cravatOut = cravatXls.parse('Variant', skiprows=11, index_col=None, na_values=['NA'])
+vcfFile = vcfFile.replace(".vcf", " CRAVAT OUT.csv")
+cravatOut.to_csv(vcfFile, ',')
+print(vcfFile)
+
+os.remove(filePath[0])
+os.rmdir(info3[0][0] + info3[0][1])
+
+```
+
+
+## PROCESS CRAVAT OUTPUT (RUN ONCE)
+# 1. Add AF from VCFs
+# 2. Save final CRAVAT output as R object
+
+```{r}
+
+# LOAD LIBRARIES
+library("reshape2")
+library("tidyr")
+library("ggplot2")
+library("ComplexHeatmap")
+library("data.table")
+library(tidyverse)
+library(stringr)
+
+# COMBINED VCF FILE NAME
+fileName = 'TSVC_variants_combined.vcf'
+cravatOutFileName = str_replace(string = fileName, pattern = '.vcf', replacement = " CRAVAT OUT.csv")
+
+# READ COMBINED VCF
+mamma=read.csv(file = paste0("Input.Data\\",cravatOutFileName), header = T)
+
+# READ INDIVIDUAL VCFs
+vcf.directory="Input.Data\\VCFs\\"
+vcf.file.list <-  list.files(vcf.directory, pattern = ".vcf")
+sample.list <- substr(vcf.file.list,15,27)
+
+# CREATE VCF PATHS
+vcf.file.list = lapply(X = vcf.file.list, FUN = function(x) paste0('Input.Data\\VCFs\\', x))
+
+# LOAD VCF DATA TO OBJECTS
+i <- 1
+for (file in vcf.file.list) {
+    assign(sample.list[i], read.table(file, sep='\t', skip = 100))
+    i <- i+1
+}
+
+# POOL DATA TO LIST
+data.list <- mget(ls(pattern = "^IonXpress_\\d+$"))
+data.list <- Map(cbind, data.list, Sample.ID = names(data.list))
+
+# GET AF AND STB
+data.list <- lapply(data.list, function(df){ 
+    df$AF = sub(".*?AF=(.*?);.*", "\\1", df$V8)
+    df$STB = sub(".*?STB=(.*?);.*", "\\1", df$V8)
+    if (length(grep(",",df$AF)) > 0) {
+        df=df[-grep(",",df$AF),]    # Remove polyclonal mutation calls
+    }
+    df$Combine <- as.character(interaction(df$V1,df$V2,df$V5,df$Sample.ID))
+    df
+})
+
+# COMBINE VCF DATA TOGETHER
+vcf <- do.call("rbind", data.list)
+
+# CREATE IDENTIFIER FOR MATCHING
+mamma$Combine=as.character(interaction(mamma$Chromosome,mamma$Position,mamma$Alternate.base.s.,mamma$Sample.ID))
+
+# COMBINE CRAVAT OUT WITH VCF DATA (AF AND STB)
+Mamma=merge(mamma,vcf,by="Combine")
+Mamma$Sample.ID = Mamma$Sample.ID.x
+
+# SAVE AS RDA
+inputFilePath = "Input.Data\\"
+cravatOutRda = "CRAVAT.annotated.variants.rda"
+save(Mamma, file = paste(inputFilePath,cravatOutRda, sep =""))
+
+
+```
+
+
+
+## SNV AND CNV FILTERING
+# 1. Load input files
+# 2. Filter SNV and CNV
+# 3. 
+
+```{r}
+
+# LOAD LIBRARIES
+
+library("reshape2")
+library("tidyr")
+library("ggplot2")
+library("ComplexHeatmap")
+library("data.table")
+library(tidyverse)
+library(stringr)
+
+# SET INPUT AND OUTPUT PATHS
+inputFilePath = "Input.Data\\"
+outputFilePath = "Results\\"
+
+# LOAD DATA
+load(paste0(inputFilePath, "CRAVAT.annotated.SNVs.rda")) # CRAVAT ANNOTATED SNV DATA
+load(paste0(inputFilePath, "clinical.data.rda")) # CLINICAL DATA
+load(paste0(inputFilePath, "oncokb.Rdata")) # ONCOKB DB
+load(paste0(inputFilePath, "cnvKit.CNVs.rda")) # CNV DATA
+load(paste0(inputFilePath, "PMKB.rda")) # PMKB DB
+
+# PROJECT NAME
+projName = 'Turkey'
+
+########################################################################################################
+################################              SNV FILTERING          ###################################
+
+# REMOVE LOW COVERAGE SAMPLES
+dropSample = "IonXpress_038"
+Mamma = Mamma[Mamma$Sample.ID != dropSample,]
+cnv = cnv[cnv$Sample.ID != dropSample,]
+
+# FILTER 1: REMOVE GENOMIC VARIANTS THAT ARE PRESENT IN MORE THAN 10 SAMPLES (LIKELY TO BE SEQUENCING ARTIFACTS OR COMMON VARIATIONS)
+mamma.filter.1=Mamma[Mamma$Position %in% names(which(table(Mamma$Position) < 10)), ]
+
+# FILTER 2: REMOVE ALL SYNONYMOUS VARIANTS (SY)
+mamma.filter.2=mamma.filter.1[-grep('SY',mamma.filter.1$Sequence.ontology),]
+
+# FILTER 3: REMOVE LOW CONFIDENCE VARIANTS (SELECT FOR VARIANTS WITH STRAND BIAS BETWEEN 0.5 and 0.6)
+lb = 0.5; ub = 0.6
+mamma.filter.3=mamma.filter.2[mamma.filter.2$STB >= lb & mamma.filter.2$STB <= ub, ]
+
+# FILTER 4: REMOVE VARIANTS ANNOTATED IN GNOMAD AND 1000GENOME WITH AF > 1%
+mamma.filter.4=mamma.filter.3[mamma.filter.3$gnomAD.AF.Total < 0.01 | mamma.filter.3$X1000.Genomes.AF < 0.01, ]
+
+# FILTER 5: REMOVE VARIANTS WITH AF > 90%, THESE ARE LIKELY GERMLINE
+mamma.final=mamma.filter.4[mamma.filter.4$AF < 0.9, ]
+
+
+########################################################################################################
+################################             CNV FILTERING           ###################################
+
+upperBound = 6
+lowerBound = 1
+
+AMP=cnv[cnv$copy.number > upperBound,]
+DEL=cnv[cnv$copy.number < lowerBound,]
+
+# ANNOTATE WITH ONCOKB JARGON
+AMP$OncoKB = paste(AMP$gene, "Amplification", sep = ".")
+DEL$OncoKB = paste(DEL$gene, "Deletion", sep = ".")
+
+# ANNOTATE WITH PMKB JARGON
+AMP$PMKB = paste(AMP$gene, ".copy.number.gain", sep = "")
+DEL$PMKB = paste(DEL$gene, ".copy.number.loss", sep = "")
+
+# COMBINE
+cnvCombined = rbind(AMP, DEL)
+
+# COLOR CODES
+AMP$color.translation=sapply(AMP$copy.number,FUN= function(x) { if (x > upperBound ) { return(1) }})
+DEL$color.translation=sapply(DEL$copy.number,FUN= function(x) { if (x < lowerBound ) { return(1) }})
+
+# CONVERT TO PIVOT TABLES
+AMP <- dcast(AMP, gene~Sample.ID, value.var = "color.translation",fun.aggregate = sum)
+DEL <- dcast(DEL, gene~Sample.ID, value.var = "color.translation",fun.aggregate = sum)
+rownames(AMP)=AMP$gene
+rownames(DEL)=DEL$gene
+AMP=AMP[,-1,drop=FALSE]
+DEL=DEL[,-1,drop=FALSE]
+AMP=as.matrix(AMP)
+DEL=as.matrix(DEL)
+
+# PREPARE SNV DATA
+MUT=mamma.final[, c("Sample.ID", "HUGO.symbol", "Sequence.ontology")]
+MS=as.numeric(gsub("MS|CS|FI|ID|SS|SG|FD|II","1",MUT$Sequence.ontology))
+MUT$Sequence.ontology=MS
+#MUT=MUT[-grep("KRAS|IDH1",MUT$HUGO.symbol),]
+MUT$HUGO.symbol <- factor(MUT$HUGO.symbol)
+MUT=dcast(MUT, HUGO.symbol~Sample.ID, value.var = "Sequence.ontology",fun.aggregate = sum)
+rownames(MUT)=MUT[,1]
+MUT=MUT[,-1]
+MUT=as.matrix(MUT)
+
+########################################################################################################
+################################               ONCOPRINT             ###################################
+
+# DEFINE VISUALS
+col = c("MUT" = "#008000", "AMP" = "red", "DEL" = "blue")
+alter_fun = list(
+    background = function(x, y, w, h) {
+        grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = "#CCCCCC", col = NA)) },
+    DEL = function(x, y, w, h) {
+      grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = "blue", col = NA)) },
+    AMP = function(x, y, w, h) {
+      grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = "red", col = NA)) },
+    MUT = function(x, y, w, h) {
+      grid.rect(x, y, w-unit(0.5, "mm"), h-unit(0.5, "mm"), gp = gpar(fill = "#008000", col = NA)) }
+)
+
+# COMBINE SNV AND CNV
+mat.list <- list(MUT=MUT, AMP=AMP, DEL=DEL)
+mat.list.uni <- unify_mat_list(mat.list)
+
+# GENERATE CLINICAL ANNOTATION
+tumors=clinical.data[,c("location","Diagnosis")]
+rownames(tumors) = sapply(as.character(clinical.data[,2]), FUN = function(x) strsplit(x, "_")[[1]][2])
+colnames(tumors)=c("Location","Diagnosis")
+ha_column = HeatmapAnnotation(df = tumors, col = list(
+  `Diagnosis` = c("apocrine cancer"= "#000080", "idc"="#9370DB", "micropapillary"="#DB7093",
+                   "breast cancer met"="#ADD8E6","lc"="#ff0000", "ilc"="#008000"),
+  `Location` = c("Breast"="#FF6347","Lymph Nodes"="#EE82EE","Metastatic Site"="#CCCCCC"))) 
+
+# GENERATE ONCOPRINT
+tumor.ht = oncoPrint(mat.list.uni, get_type = function(x) strsplit(x, ";")[[1]],
+                   bottom_annotation = ha_column, column_title = NULL,
+                   alter_fun = alter_fun, col = col, remove_empty_columns = T, show_column_names = T,
+                   heatmap_legend_param = list(title = "Alternation", at = c("AMP", "DEL", "MUT"), 
+                                               labels = c("Amplification", "Deletion", "Mutation")))
+
+# SAVE ONCOPRINT
+fileNameFig1 = paste0(outputFilePath, "Genetic Alteration - ", " (Bounds = ", round(lowerBound,2), "-", round(upperBound,2), ") ", projName,".pdf")
+pdf(file = fileNameFig1, height = 12, width= 10)
+draw(tumor.ht)
+dev.off()
+
+
+```
+
+
+## CLINICAL ACTIONABILITY
+# 1. FIND ALTERATIONS LISTED IN ONCOKB
+# 2. FIND ALTERATIONS LISTED IN PMKB
+# 3. COMBINE ALL CLINICALLY SIGNIFICANT ALTERATIONS
+# 4. FIND OVERLAP BETWEEN BOTH DB
+
+```{r}
+
+########################################################################################################
+############################             OVERLAP WITH ONCOKB           #################################
+
+# IDENTIFIER
+oncokb$combined=as.character(interaction(oncokb$Gene, oncokb$Alteration))
+mamma.final$combined=as.character(interaction(mamma.final$HUGO.symbol,mamma.final$Protein.sequence.change))
+
+# CREATE DATA FRAME
+combinedAlterations = data.frame(Sample.ID = rbind(cbind(as.character(mamma.final$Sample.ID)),
+                                                   cbind(cnvCombined$Sample.ID)), 
+                                 HUGO.symbol = rbind(cbind(as.character(mamma.final$HUGO.symbol)), 
+                                                     cbind(as.character(cnvCombined$gene))),
+                                 AF_CN = rbind(cbind(mamma.final$AF),                           
+                                               cbind(cnvCombined$copy.number)),
+                                 combined = rbind(cbind(mamma.final$combined), cbind(cnvCombined$OncoKB)))
+
+# OVERLAP BETWEEN FOUND ALTERATIONS AND ONCOKB DB
+overlapOnco=combinedAlterations[complete.cases(match(combinedAlterations$combined,oncokb$combined)),]
+overlapOnco=merge(overlapOnco,oncokb,by="combined")
+
+# UPDATE DATA FRAME
+clinicallySig.OncoKB=as.data.frame(cbind( as.character(overlapOnco$Sample.ID),
+                                  as.character(overlapOnco$HUGO.symbol),
+                                  as.character(overlapOnco$combined),
+                                  as.character(overlapOnco$Level),
+                                  as.character(overlapOnco$AF_CN)))
+names(clinicallySig.OncoKB) = c("Sample.ID", "HUGO.symbol","Gene.Variation","Level","AF/CN")
+clinicallySig.OncoKB$Source = rep("OncoKB", length(clinicallySig.OncoKB$Sample.ID))
+clinicallySig.OncoKB$ID.Variant = interaction(clinicallySig.OncoKB$Sample.ID, clinicallySig.OncoKB$Gene.Variation)
+
+
+########################################################################################################
+############################              OVERLAP WITH PMKB            #################################
+
+
+# CREATE DATA FRAME
+PMKBAll$combined = PMKBAll$Variants
+combinedAlterations = data.frame(Sample.ID = rbind(cbind(as.character(mamma.final$Sample.ID)),
+                                                   cbind(cnvCombined$Sample.ID)), 
+                                 HUGO.symbol = rbind(cbind(as.character(mamma.final$HUGO.symbol)), 
+                                                     cbind(as.character(cnvCombined$gene))),
+                                 AF_CN = rbind(cbind(mamma.final$AF),                           
+                                               cbind(cnvCombined$copy.number)),
+                                 combined = rbind(cbind(mamma.final$combined), cbind(cnvCombined$PMKB)))
+
+# OVERLAP BETWEEN FOUND ALTERATIONS AND PMKB DB
+overlapPMKB = combinedAlterations[complete.cases(match(combinedAlterations$combined,PMKBAll$Variants)),]
+overlapPMKB = merge(overlapPMKB,PMKBAll,by="combined")
+
+# UPDATE DATAFRAME
+clinicallySig.PMKB=as.data.frame(cbind( as.character(overlapPMKB$Sample.ID),
+                                  as.character(overlapPMKB$HUGO.symbol),
+                                  as.character(overlapPMKB$combined),
+                                  as.character(overlapPMKB$Tissue.Type.s.),
+                                  as.character(overlapPMKB$Tier),
+                                  as.character(overlapPMKB$AF_CN)))
+names(clinicallySig.PMKB) = c("Sample.ID", "HUGO.symbol","Gene.Variation","Tissue","PMKB.Tier","AF/CN")
+clinicallySig.PMKB$ID.Variant = interaction(clinicallySig.PMKB$Sample.ID, clinicallySig.PMKB$Gene.Variation)
+clinicallySig.PMKB$Source = rep("PMKB", length(clinicallySig.PMKB$ID.Variant))
+
+# ADD TISSUE INFORMATION TO DATAFRAME
+aggTissues = aggregate(Tissue~ID.Variant,data=clinicallySig.PMKB,FUN= paste)$Tissue
+collapsedTissues = sapply(X = aggTissues,FUN = function(x) paste(x, collapse =  "", sep = ", "))
+
+# REMOVE DUPLICATES
+clinicallySig.PMKB = clinicallySig.PMKB[!duplicated(clinicallySig.PMKB$ID.Variant),]
+clinicallySig.PMKB$Tissue = collapsedTissues
+clinicallySig.PMKB$TissueSummary = rep("Breast", length(clinicallySig.PMKB$Sample.ID))
+clinicallySig.PMKB$TissueSummary[grep(pattern = "reast", x = collapsedTissues,invert = T)] = "Other"
+
+
+########################################################################################################
+#############################        OVERLAP BTW PMKB AND ONCOKB      ##################################
+
+# FIND OVERLAP
+clinicalSig.Merged = merge(clinicallySig.PMKB,clinicallySig.OncoKB,by="ID.Variant",all = T)
+detected.By.PMKB = complete.cases(clinicalSig.Merged$Source.x)
+detected.By.OncoKB = complete.cases(clinicalSig.Merged$Source.y)
+detected.By.Both = which(detected.By.PMKB == detected.By.OncoKB)
+
+# ADD ANNOATIONS 
+clinicalSig.Merged$Detectedby = rep("", length(detected.By.PMKB))
+clinicalSig.Merged$Detectedby[which(detected.By.PMKB)] = "PMKB"
+clinicalSig.Merged$Detectedby[which(detected.By.OncoKB)] = "OncoKB"
+clinicalSig.Merged$Detectedby[detected.By.Both] = "Both"
+
+# IDENTIFIER
+extract.gene.variant = function(x) {
+  splitted = str_split(string = x, pattern = "[.]")[[1]]
+  return (paste(splitted[2], paste(splitted[3:length(splitted)],collapse = "."), sep = "."))
+}
+clinicalSig.Merged$gene.variants.combined = sapply(clinicalSig.Merged$ID.Variant, FUN = extract.gene.variant)
+clinicalSig.Merged$SampleID.combined = sapply(clinicalSig.Merged$ID.Variant, FUN = function(x) 
+  str_split(x, pattern="[.]")[[1]][1])
+
+# UNIQUE
+unique.ClinicalSig.Merged = clinicalSig.Merged[!duplicated(clinicalSig.Merged$gene.variants.combined),]
+
+# ONLY ONCOKB
+variants.Onco = unique.ClinicalSig.Merged$gene.variants.combined[unique.ClinicalSig.Merged$Detectedby != "PMKB"]
+
+# ONLY PMKB
+variants.PMKB = unique.ClinicalSig.Merged$gene.variants.combined[unique.ClinicalSig.Merged$Detectedby != "OncoKB"]
+
+# SAVE AS CSV
+write.csv(x = unique.ClinicalSig.Merged, file = paste0(outputFilePath, "Clinical Significance of Variants - Unique.csv"))
+write.csv(x = clinicalSig.Merged, file = paste0(outputFilePath, "Clinical Significance of Variants - ALL.csv"))
+
+
+# MAKE VENN DIAGRAM
+library(RAM)
+
+pdf(paste0(outputFilePath, "oncoKB-PMKB_overlap.pdf"), 10, 10)
+group.venn(list(OncoKB = variants.Onco, PMKB = variants.PMKB), label=TRUE, 
+    fill = c("yellow", "green"), lab.cex=2.2, width = 25, height = 25, cat.dist = 0.03)
+dev.off()
+
+# pdf(paste0(outputFilePath, "Pitt Pop - Turkey Pop_overlap.pdf"), 12, 10)
+# group.venn(list(Turkey = clinicalSig.Merged$gene.variants.combined, Pittisbrugh = oncokb.table$Gene.Variation), label=TRUE, 
+#     fill = c("green", "red"), lab.cex=1.6, width = 25, height = 25, cat.cex = 1.5, cex=1.5, cat.dist = 0.032)
+# dev.off()
+
+
+```
+
+
+## Mutational Frequency plots
+```{r}
+
+mutations.per.patient<-as.data.frame(table(Mamma$Sample.ID))
+
+mutations.per.patient = mutations.per.patient[!mutations.per.patient$Var1 == dropSample,]
+
+mutations.per.patient = mutations.per.patient[order(mutations.per.patient$Freq, decreasing = T),]
+
+mutations.per.patient.plot<-ggplot(data= mutations.per.patient, aes(x=reorder(Var1, -Freq), y=Freq)) +
+    geom_bar(stat="identity", fill="steelblue")+
+    theme_minimal()+ 
+    ggtitle("SNV Frequency per Sample")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank(), axis.title.y=element_text(size=14))+
+    labs(y="SNV Frequency")  +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(text = element_text(size=11)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank())
+
+# projName = str_replace(string = fileName, pattern = ".vcf", replacement = "")
+fileNameFig3 = paste0(outputFilePath,"SNV Frequency All Variants - ", projName, ".pdf")
+ggsave(filename = fileNameFig3,plot = mutations.per.patient.plot)
+
+
+mutations.per.patient<-as.data.frame(table(mamma.final$Sample.ID))
+
+mutations.per.patient = mutations.per.patient[!mutations.per.patient$Var1 == dropSample,]
+
+mutations.per.patient = mutations.per.patient[order(mutations.per.patient$Freq, decreasing = T),]
+
+mutations.per.patient.plot<-ggplot(data= mutations.per.patient, aes(x=reorder(Var1, -Freq), y=Freq)) +
+    geom_bar(stat="identity", fill="steelblue")+
+    theme_minimal()+ 
+    ggtitle("SNV Frequency per Sample")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank(), axis.title.y=element_text(size=14))+
+    labs(y="SNV Frequency")  +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(text = element_text(size=11)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank())
+
+# projName = str_replace(string = fileName, pattern = ".vcf", replacement = "")
+fileNameFig3 = paste0(outputFilePath,"SNV Frequency - ", projName, ".pdf")
+ggsave(filename = fileNameFig3,plot = mutations.per.patient.plot)
+
+```
+
+
+## AMPLIFICATION Frequency plots
+```{r}
+
+AMP.per.patient<-data.frame(Var1 = colnames(AMP), Freq = colSums(AMP))
+
+AMP.per.patient = AMP.per.patient[!AMP.per.patient$Var1 == dropSample,]
+
+AMP.per.patient = AMP.per.patient[order(AMP.per.patient$Freq, decreasing = T),]
+
+AMP.per.patient.plot<-ggplot(data= AMP.per.patient, aes(x=reorder(Var1, -Freq), y=Freq)) +
+    geom_bar(stat="identity", fill="steelblue")+
+    theme_minimal()+ 
+    ggtitle("CNV Gain Frequency per Sample")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank(), axis.title.y=element_text(size=14))+
+    labs(y="CNV Gain Frequency")  +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(text = element_text(size=11)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank())
+
+# projName = str_replace(string = fileName, pattern = ".vcf", replacement = "")
+fileNameFig3 = paste(outputFilePath,"CNV Gain Frequency across Samples - ", projName, ".pdf", sep = "")
+ggsave(filename = fileNameFig3,plot = AMP.per.patient.plot)
+
+
+AMP.per.patient<-data.frame(Var1 = rownames(AMP), Freq = rowSums(AMP))
+
+AMP.per.patient = AMP.per.patient[!AMP.per.patient$Var1 == dropSample,]
+
+AMP.per.patient = AMP.per.patient[order(AMP.per.patient$Freq, decreasing = T),]
+
+AMP.per.patient.plot<-ggplot(data= AMP.per.patient, aes(x=reorder(Var1, -Freq), y=Freq)) +
+    geom_bar(stat="identity", fill="steelblue")+
+    theme_minimal()+ 
+    ggtitle("CNV Gain Frequency per Gene")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank(), axis.title.y=element_text(size=14))+
+    labs(y="CNV Gain Frequency")  +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(text = element_text(size=11)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank())
+
+# projName = str_replace(string = fileName, pattern = ".vcf", replacement = "")
+fileNameFig3 = paste(outputFilePath,"CNV Gain Frequency across genes - ", projName, ".pdf", sep = "")
+ggsave(filename = fileNameFig3,plot = AMP.per.patient.plot)
+
+```
+
+## DELETION Frequency plots
+```{r}
+
+DEL.per.patient<-data.frame(Var1 = colnames(DEL), Freq = colSums(DEL))
+
+DEL.per.patient = DEL.per.patient[!DEL.per.patient$Var1 == dropSample,]
+
+DEL.per.patient = DEL.per.patient[order(DEL.per.patient$Freq, decreasing = T),]
+
+DEL.per.patient.plot<-ggplot(data= DEL.per.patient, aes(x=reorder(Var1, -Freq), y=Freq)) +
+    geom_bar(stat="identity", fill="steelblue")+
+    theme_minimal()+ 
+    ggtitle("CNV Loss Frequency per Sample")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank(), axis.title.y=element_text(size=14))+
+    labs(y="CNV Loss Frequency")  +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(text = element_text(size=11)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank())
+
+# projName = str_replace(string = fileName, pattern = ".vcf", replacement = "")
+fileNameFig3 = paste(outputFilePath,"CNV Loss Frequency across Samples - ", projName, ".pdf", sep = "")
+ggsave(filename = fileNameFig3,plot = DEL.per.patient.plot)
+
+
+DEL.per.patient<-data.frame(Var1 = rownames(DEL), Freq = rowSums(DEL))
+DEL.per.patient = DEL.per.patient[!DEL.per.patient$Var1 == dropSample,]
+
+DEL.per.patient = DEL.per.patient[order(DEL.per.patient$Freq, decreasing = T),]
+
+DEL.per.patient.plot<-ggplot(data= DEL.per.patient, aes(x=reorder(Var1, -Freq), y=Freq)) +
+    geom_bar(stat="identity", fill="steelblue")+
+    theme_minimal()+ 
+    ggtitle("CNV Loss Frequency per Gene")+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank(), axis.title.y=element_text(size=14))+
+    labs(y="CNV Loss Frequency")  +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(text = element_text(size=11)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),axis.title.x=element_blank())
+
+# projName = str_replace(string = fileName, pattern = ".vcf", replacement = "")
+fileNameFig3 = paste(outputFilePath,"CNV Loss Frequency across genes - ", projName, ".pdf", sep = "")
+ggsave(filename = fileNameFig3,plot = DEL.per.patient.plot)
+
+```
