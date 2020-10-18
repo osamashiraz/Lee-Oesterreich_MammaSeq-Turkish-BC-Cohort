@@ -706,104 +706,12 @@ sort(rowSums(MUT),decreasing = T) # MOST COMMON ALTERATIONS
     ##    TP53 T125M  MAP3K1 T169I    JAK3 V722I  PTCH1 Y1316C 
     ##             1             1             1             1
 
-READ ME FILE GENERATION
-=======================
+READ ME FILE GENERATION - RENAME main.md to README.md
+=====================================================
 
 ``` r
-rmarkdown::render("main.RMD",output_format = "md_document")
+file.rename(from = "main.md", to = "README.md")
 ```
-
-    ## 
-    ## 
-    ## processing file: main.RMD
-
-    ##   |                                                                              |                                                                      |   0%  |                                                                              |...                                                                   |   4%
-    ##    inline R code fragments
-    ## 
-    ##   |                                                                              |.....                                                                 |   8%
-    ## label: unnamed-chunk-27
-    ##   |                                                                              |........                                                              |  12%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |...........                                                           |  15%
-    ## label: unnamed-chunk-28
-    ##   |                                                                              |.............                                                         |  19%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |................                                                      |  23%
-    ## label: unnamed-chunk-29
-    ##   |                                                                              |...................                                                   |  27%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |......................                                                |  31%
-    ## label: unnamed-chunk-30
-    ##   |                                                                              |........................                                              |  35%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |...........................                                           |  38%
-    ## label: unnamed-chunk-31
-    ##   |                                                                              |..............................                                        |  42%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |................................                                      |  46%
-    ## label: unnamed-chunk-32 (with options) 
-    ## List of 2
-    ##  $ fig.width : num 7
-    ##  $ fig.height: num 8
-
-    ##   |                                                                              |...................................                                   |  50%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |......................................                                |  54%
-    ## label: unnamed-chunk-33
-    ##   |                                                                              |........................................                              |  58%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |...........................................                           |  62%
-    ## label: unnamed-chunk-34 (with options) 
-    ## List of 2
-    ##  $ fig.width : num 7
-    ##  $ fig.height: num 6
-
-    ##   |                                                                              |..............................................                        |  65%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |................................................                      |  69%
-    ## label: unnamed-chunk-35
-
-    ##   |                                                                              |...................................................                   |  73%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |......................................................                |  77%
-    ## label: unnamed-chunk-36
-
-    ##   |                                                                              |.........................................................             |  81%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |...........................................................           |  85%
-    ## label: unnamed-chunk-37 (with options) 
-    ## List of 2
-    ##  $ fig.width : num 10
-    ##  $ fig.height: num 12
-
-    ##   |                                                                              |..............................................................        |  88%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |.................................................................     |  92%
-    ## label: unnamed-chunk-38
-
-    ##   |                                                                              |...................................................................   |  96%
-    ##   ordinary text without R code
-    ## 
-    ##   |                                                                              |......................................................................| 100%
-    ## label: unnamed-chunk-39
-
-    ## output file: main.knit.md
-
-    ## "C:/Program Files/RStudio/bin/pandoc/pandoc" +RTS -K512m -RTS main.utf8.md --to markdown_github --from markdown+autolink_bare_uris+tex_math_single_backslash --output main.md --standalone
-
-    ## 
-    ## Output created: main.md
 
 SESSION INFO
 ============
