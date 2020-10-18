@@ -1,22 +1,12 @@
----
-title: "Analysis of SNV and CNV in Advance Stage BC Samples of Turkish Decsent using MammaSeq"
-author: "Osama Shiraz Shah"
-date: "`r Sys.Date()`"
-output: 
-  prettydoc::html_pretty:
-    theme: Cayman
-  md_document:
-    variant: markdown_github
----
+main.RMD contains the code used to generate data presented in following
+work: (Identifying Genomic Alterations in Stage IV Breast Cancer
+Patients using MammaSeq<sup>TM</sup>: An International Collaborative
+Study)\[<a href="https://www.sciencedirect.com/science/article/abs/pii/S1526820920302135" class="uri">https://www.sciencedirect.com/science/article/abs/pii/S1526820920302135</a>\]
 
+PREPARATION
+===========
 
-main.RMD contains the code used to generate data presented in following work:
-(Identifying Genomic Alterations in Stage IV Breast Cancer Patients using MammaSeq<sup>TM</sup>: An International Collaborative Study)[https://www.sciencedirect.com/science/article/abs/pii/S1526820920302135]
-
-
-
-# PREPARATION
-```{r}
+``` r
 # WORKING DIRECTORY TO LOCATION OF SCRIPT - MUST HAVE INPUT AND OUT FOLDER (MIRROR FROM )
 setwd("./")
 
@@ -36,13 +26,12 @@ load(paste0(inputFilePath, "oncokb.Rdata")) # ONCOKB DB
 load(paste0(inputFilePath, "cnv.data.rda")) # CNV DATA
 load(paste0(inputFilePath, "PMKB.rda")) # PMKB DB
 load(paste0(inputFilePath, "colorPalette.rda")) # ANNOTATION COLORS
-
 ```
 
+SNV FILTERING
+=============
 
-# SNV FILTERING
-```{r}
-
+``` r
 # FILTER 1: REMOVE GENOMIC VARIANTS THAT ARE PRESENT IN 30% OR MORE SAMPLES (LIKELY TO BE SEQUENCING ARTIFACTS OR COMMON VARIATIONS)
 mamma.filter.1=Mamma[Mamma$Position %in% names(which(table(Mamma$Position) < length(unique(Mamma$Sample.ID))*30/100)),]
 
@@ -67,13 +56,12 @@ mamma.filter.5=mamma.filter.4[mamma.filter.4$AF < 0.9, ]
 mamma.final=subset(mamma.filter.5, Total.reads > 50) # Sequencing depth filter
 
 write.csv(x = mamma.final, file = paste0(outputFilePath,"Final Filtered SNV List.csv"),row.names = F)
-
 ```
 
+SNV MATRIX
+----------
 
-## SNV MATRIX
-```{r}
-
+``` r
 ## BY GENE
 MUT=mamma.final[, c("Sample.ID", "HUGO.symbol", "Sequence.ontology")]
 MS=as.numeric(gsub("MS|CS|FI|ID|SS|SG|FD|II","1",MUT$Sequence.ontology))
@@ -96,13 +84,12 @@ rownames(mat)=rownames(MUT)
 
 MUT=cbind2(MUT, mat)
 MUT = MUT[,order(colnames(MUT))]
-
 ```
 
+CNV FILTERING
+=============
 
-# CNV FILTERING
-```{r}
-
+``` r
 upperBound = 6
 lowerBound = 1
 
@@ -136,25 +123,45 @@ AMP=AMP[,-1]
 DEL=DEL[,-1]
 AMP=as.matrix(AMP)
 DEL=as.matrix(DEL)
-
 ```
 
-# ALTERATION STATS
-```{r}
+ALTERATION STATS
+================
+
+``` r
 # unique alteration count
 print(paste0("SNVs: ",length(unique(c(as.character(interaction(mamma.final$HUGO.symbol,mamma.final$Protein.sequence.change)))))))
+```
 
+    ## [1] "SNVs: 49"
+
+``` r
 print(paste0("CNVs: ",length(print(sort(table(cnvCombined$alteration))))))
+```
 
+    ## 
+    ##    AR.Gain FGFR1.Gain IKBKB.Gain   MYC.Gain IGF1R.Gain BRCA2.Loss   RB1.Loss 
+    ##          1          1          1          1          2          3          3 
+    ## RUNX1.Gain ERBB2.Gain  GRB7.Gain 
+    ##          3         15         15 
+    ## [1] "CNVs: 10"
+
+``` r
 print(paste0("total alterations: ",length(unique(c(as.character(interaction(mamma.final$HUGO.symbol,mamma.final$Protein.sequence.change)))))+length(unique(cnvCombined$alteration))))
+```
 
+    ## [1] "total alterations: 59"
+
+``` r
 print(paste0("genes: ",length(unique(c(unique(mamma.final$HUGO.symbol),as.character(unique(cnv$gene)))))))
 ```
 
+    ## [1] "genes: 38"
 
-# FIGURE 1 - ONCOPRINT BY GENE
-```{r, fig.width=7, fig.height=8}
+FIGURE 1 - ONCOPRINT BY GENE
+============================
 
+``` r
 library("ComplexHeatmap")
 
 # PREPARING VISUALS
@@ -226,23 +233,41 @@ tumor.ht = oncoPrint(mat.list.uni,alter_fun = alter_fun, col = col, remove_empty
                       column_title = NULL, show_column_names = T, pct_gp = gpar(fontsize=12),
                       row_names_gp = gpar(fontsize=12, fontface="bold"),
                       heatmap_legend_param = leg_param, remove_empty_rows = T)
+```
 
+    ## All mutation types: MUT, AMP, DEL
+
+``` r
 tumor.ht %v% ha_column # oncorpint 
+```
 
+![](main_files/figure-markdown_github/unnamed-chunk-19-1.png)
 
+``` r
 sort(rowSums(MUT),decreasing = T) # GENES WITH MOST MUTATIONS
+```
 
+    ## PIK3CA   TP53    ATM MAP3K1  NCOR1  CCNE1    MET  PTCH1     AR ARID1A  AURKB 
+    ##     12      8      6      6      3      2      2      2      1      1      1 
+    ##  CCND1 CDKN1B CDKN2B   CTCF   EGFR  ERBB4  FGF19  FGFR1  FGFR2  FGFR4  FOXA1 
+    ##      1      1      1      1      1      1      1      1      1      1      1 
+    ##  GATA3   IDH1  IKBKE INPP4B   JAK3 MAP2K4 
+    ##      1      1      1      1      1      1
 
+``` r
 # SAVE AS FIGURE AS PNG
 png(filename = paste0(outputFilePath,"Figure 1 - Oncoprint.png"), width = 9, height = 10, units = 'in', res = 300)
 draw(tumor.ht %v% ha_column)
 dev.off()
-
 ```
 
-# CLINICAL ACTIONABILITY ANALYSIS
+    ## png 
+    ##   2
 
-```{r}
+CLINICAL ACTIONABILITY ANALYSIS
+===============================
+
+``` r
 ### 1. FIND ALTERATIONS LISTED IN ONCOKB
 
 # ADD IDENTIFIER
@@ -351,7 +376,65 @@ unique.alterations = clinicalSig.Merged$gene.variants.combined[notDuplicated]
 unique.ClinicalSig.Merged = clinicalSig.Merged[notDuplicated,]
 drops = c("ID.Variant","Sample.ID.x","Sample.ID.y","SampleID.combined")
 unique.ClinicalSig.Merged[,!(names(unique.ClinicalSig.Merged) %in% drops)]
+```
 
+    ##    HUGO.symbol.x Gene.Variation.x
+    ## 1             AR          AR.Gain
+    ## 2            ATM        ATM.F858L
+    ## 3          ERBB2       ERBB2.Gain
+    ## 18         FGFR1       FGFR1.Gain
+    ## 19          IDH1       IDH1.R132H
+    ## 20          JAK3       JAK3.V722I
+    ## 21        PIK3CA     PIK3CA.E545K
+    ## 24        PIK3CA    PIK3CA.H1047R
+    ## 32          TP53       TP53.E204*
+    ## 33          <NA>             <NA>
+    ##                                                                                                                                Tissue
+    ## 1                                                                                                                            Prostate
+    ## 2                                                         Breast, SkinBreast, Colon, Esophagus, Lung, Stomach, Unknown, RectumThyroid
+    ## 3                                                                                                                              Breast
+    ## 18 PancreasBreastAppendix, Colon, Esophagus, Peritoneum, Retroperitoneum, Stomach, Rectum, Gastroesophageal JunctionColonProstateLung
+    ## 19                                      BreastLiverBrain, Spinal Cord, Brain, Infratentorial, Brain, SupratentorialBlood, Bone Marrow
+    ## 20                                                                                                     Colon, Lung, Pancreas, Thyroid
+    ## 21                                            Colon, RectumAnus, Oral Cavity, PharynxBreastLiver, Pancreas, StomachBlood, Bone Marrow
+    ## 24                                                         Anus, Oral Cavity, PharynxBreastLiver, Pancreas, StomachBlood, Bone Marrow
+    ## 32                                                                                                                     Lung, Pancreas
+    ## 33                                                                                                                               <NA>
+    ##    PMKB.Tier          AF/CN.x Source.x TissueSummary HUGO.symbol.y
+    ## 1          1 8.98100525048033     PMKB         Other          <NA>
+    ## 2          3         0.697824     PMKB        Breast          <NA>
+    ## 3          1 6.53388972581291     PMKB        Breast         ERBB2
+    ## 18         2 7.61968220894312     PMKB        Breast          <NA>
+    ## 19         2         0.355484     PMKB        Breast          <NA>
+    ## 20         3         0.527473     PMKB         Other          <NA>
+    ## 21         1          0.78999     PMKB        Breast        PIK3CA
+    ## 24         2         0.410548     PMKB        Breast        PIK3CA
+    ## 32         2         0.535721     PMKB         Other          <NA>
+    ## 33      <NA>             <NA>     <NA>          <NA>        PIK3CA
+    ##    Gene.Variation.y Level          AF/CN.y Source.y Detectedby
+    ## 1              <NA>  <NA>             <NA>     <NA>       PMKB
+    ## 2              <NA>  <NA>             <NA>     <NA>       PMKB
+    ## 3        ERBB2.Gain     1 6.53388972581291   OncoKB       Both
+    ## 18             <NA>  <NA>             <NA>     <NA>       PMKB
+    ## 19             <NA>  <NA>             <NA>     <NA>       PMKB
+    ## 20             <NA>  <NA>             <NA>     <NA>       PMKB
+    ## 21     PIK3CA.E545K     3          0.78999   OncoKB       Both
+    ## 24    PIK3CA.H1047R     3         0.410548   OncoKB       Both
+    ## 32             <NA>  <NA>             <NA>     <NA>       PMKB
+    ## 33      PIK3CA.R88Q     3         0.348718   OncoKB     OncoKB
+    ##    gene.variants.combined
+    ## 1                 AR.Gain
+    ## 2               ATM.F858L
+    ## 3              ERBB2.Gain
+    ## 18             FGFR1.Gain
+    ## 19             IDH1.R132H
+    ## 20             JAK3.V722I
+    ## 21           PIK3CA.E545K
+    ## 24          PIK3CA.H1047R
+    ## 32             TP53.E204*
+    ## 33            PIK3CA.R88Q
+
+``` r
 # ONCOKB Only
 variants.Onco = unique.ClinicalSig.Merged$gene.variants.combined[unique.ClinicalSig.Merged$Detectedby != "PMKB"]
 
@@ -362,16 +445,20 @@ variants.PMKB = unique.ClinicalSig.Merged$gene.variants.combined[unique.Clinical
 # SAVE AS CSV
 write.csv(x = unique.ClinicalSig.Merged, file = paste0(outputFilePath, "Clinically Significant Variants - Unique.csv"))
 write.csv(x = clinicalSig.Merged, file = paste0(outputFilePath, "Clinically Significant Variants - ALL.csv"))
-
 ```
 
+FIGURE 2 - VENN DIAGRAME SHOWING OVERLAP OF CLINICALLY SIGNIFICANT VARIANTS IN ONCOKB AND PMKB DB
+=================================================================================================
 
-# FIGURE 2 - VENN DIAGRAME SHOWING OVERLAP OF CLINICALLY SIGNIFICANT VARIANTS IN ONCOKB AND PMKB DB
-```{r, fig.width=7, fig.height=6}
-
+``` r
 library(VennDiagram)
 
 futile.logger::flog.threshold(futile.logger::ERROR, name = "VennDiagramLogger")
+```
+
+    ## NULL
+
+``` r
 venn <- venn.diagram(list(PMKB=variants.PMKB, OncoKB=variants.Onco),
                   fill = c("#01579B", "#FF3D00"),alpha = c(0.4, 0.4), cat.cex = c(1.5,1.5), cex=c(1.1,1.1,1.1), lty = 'blank', 
                   fontface = "bold", fontfamily = "sans",cat.fontface = "bold",
@@ -384,18 +471,24 @@ venn[[7]]$label  <- paste(intersect(variants.PMKB, variants.Onco), collapse="\n"
 
 
 grid.newpage(); grid.draw(venn) # print figure
+```
 
+![](main_files/figure-markdown_github/unnamed-chunk-21-1.png)
 
+``` r
 # save figure
 png(paste0(outputFilePath,"Figure 2 - PMKB vs OncoKB.png"),width = 1200,height = 1000,res = 180)
 grid.draw(venn)
 dev.off()
-
 ```
 
+    ## png 
+    ##   2
 
-# SUPPLEMENTARY FIGURE 1 - MEAN COVERAGE PLOT
-```{r}
+SUPPLEMENTARY FIGURE 1 - MEAN COVERAGE PLOT
+===========================================
+
+``` r
 load("./input/ReadDepth.Rdata")
 
 read_depth=as.data.frame(t(read_depth)) # row names prefix "IonXpress_" were removed to make a clear plot
@@ -421,21 +514,25 @@ colnames(read_depth_mat)=rownames(read_depth)
 
 barplot(read_depth_mat, col=c("darkblue") , border="white", las=2, font.axis=2, xlab="Samples", ylab="Mean Coverage")
 f = 7; text(x = 35-f, y = 10000, t1); text(x = 42.4-f, y = 9000, t2); text(x = 40.5-f, y = 8500, t3)
+```
 
+![](main_files/figure-markdown_github/unnamed-chunk-22-1.png)
+
+``` r
 coverage.barplot <- recordPlot()
 
 pdf(paste0(outputFilePath,"Supplementary Figure 1 - Mean Coverage Plot.pdf"))
 print(coverage.barplot)
 dev.off()
-
-
 ```
 
+    ## png 
+    ##   2
 
-# SUPPLEMENTART FIGURE 3 - MUTATIONAL FREQUENCY PLOTS BEFORE AND AFTER FILTERING
+SUPPLEMENTART FIGURE 3 - MUTATIONAL FREQUENCY PLOTS BEFORE AND AFTER FILTERING
+==============================================================================
 
-```{r}
-
+``` r
 snv.before.filtering = as.data.frame(table(Mamma$Sample.ID))
 snv.before.filtering = snv.before.filtering[order(snv.before.filtering$Freq, decreasing = T),]
 
@@ -459,18 +556,25 @@ colnames(combined.snv.dist) = gsub(x = colnames(combined.snv.dist), pattern = "I
 
 barplot(combined.snv.dist, col=c("darkblue", "red") , border="white", las=2, font.axis=2, xlab="Samples", ylab="SNV Count")
 legend("topright", legend = c("Before Filtering", "After Filtering"),  fill = c("darkblue", "red"))
+```
 
+![](main_files/figure-markdown_github/unnamed-chunk-23-1.png)
+
+``` r
 snv.barplot <- recordPlot()
 
 png(paste0(outputFilePath,"Supplementary Figure 3 - SNV Count Before and After Filtering.png"),width = 800,height = 500,res = 100)
 print(snv.barplot)
 dev.off()
-
 ```
 
-#  SUPPLEMENTART FIGURE 4 - ONCOPRINT BY GENE ALTERATIONS
-```{r, fig.width=10, fig.height=12}
+    ## png 
+    ##   2
 
+SUPPLEMENTART FIGURE 4 - ONCOPRINT BY GENE ALTERATIONS
+======================================================
+
+``` r
 # REMAKE SNV MATRIX - USING ALTERATIONS
 mamma.final$Gene_ProteinChange=interaction(mamma.final$HUGO.symbol,mamma.final$Protein.sequence.change, sep = " ")
 MUT=mamma.final[, c("Sample.ID", "Gene_ProteinChange", "Sequence.ontology")]
@@ -557,27 +661,187 @@ tumor.ht.by.alterations = oncoPrint(mat.list.uni,alter_fun = alter_fun, col = co
                       column_title = NULL, show_column_names = T, pct_gp = gpar(fontsize=12),
                       row_names_gp = gpar(fontsize=12, fontface="bold"),
                       heatmap_legend_param = leg_param, remove_empty_rows = T)
+```
 
+    ## All mutation types: MUT, AMP, DEL
+
+``` r
 tumor.ht.by.alterations %v% ha_column             
+```
 
+![](main_files/figure-markdown_github/unnamed-chunk-24-1.png)
 
+``` r
 # save
 png(paste0(outputFilePath,"Supplementary Figure 4 - Oncoprint of Unique Alterations.png"), width = 10, height = 12, units = 'in', res = 300)
   tumor.ht.by.alterations %v% ha_column   
 dev.off()
+```
 
+    ## png 
+    ##   2
+
+``` r
 sort(rowSums(MUT),decreasing = T) # MOST COMMON ALTERATIONS
-
 ```
 
+    ## PIK3CA H1047R  MAP3K1 S939C  PIK3CA E545K    CCND1 A30T    TP53 A355T 
+    ##             8             4             3             1             1 
+    ##   FGFR4 A515T   CDKN1B A55T     EGFR A86T    ATM C1838Y    ATM D1853V 
+    ##             1             1             1             1             1 
+    ##      AR D551H    TP53 E204*    TP53 E285K    TP53 E346K     ATM F858L 
+    ##             1             1             1             1             1 
+    ##    ATM G2186R   FOXA1 G241V    TP53 G245S   FGFR2 G584R   CDKN2B G69S 
+    ##             1             1             1             1             1 
+    ##    TP53 H193R    CTCF H284Y  NCOR1 I2339V     ATM I665V   FGF19 K216M 
+    ##             1             1             1             1             1 
+    ##   CCNE1 N260I   FGFR1 P179S   NCOR1 P217S   NCOR1 P226L  INPP4B P369L 
+    ##             1             1             1             1             1 
+    ##      MET P44S     MET P791L    TP53 R110L  ERBB4 R1174W    IDH1 R132H 
+    ##             1             1             1             1             1 
+    ##   PTCH1 R135Q ARID1A R1463C  MAP3K1 R248Q   AURKB R249C   GATA3 R367* 
+    ##             1             1             1             1             1 
+    ##   PIK3CA R88Q     ATM S142N  MAP2K4 S146*   CCNE1 S248F   IKBKE S519N 
+    ##             1             1             1             1             1 
+    ##    TP53 T125M  MAP3K1 T169I    JAK3 V722I  PTCH1 Y1316C 
+    ##             1             1             1             1
 
-# READ ME FILE GENERATION - RENAME main.md to README.md
-```{r}
-file.rename(from = "main.md", to = "README.md")
+READ ME FILE GENERATION
+=======================
+
+``` r
+rmarkdown::render("main.RMD",output_format = "md_document")
 ```
 
+    ## 
+    ## 
+    ## processing file: main.RMD
 
-# SESSION INFO
-```{r}
+    ##   |                                                                              |                                                                      |   0%  |                                                                              |...                                                                   |   4%
+    ##    inline R code fragments
+    ## 
+    ##   |                                                                              |.....                                                                 |   8%
+    ## label: unnamed-chunk-27
+    ##   |                                                                              |........                                                              |  12%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |...........                                                           |  15%
+    ## label: unnamed-chunk-28
+    ##   |                                                                              |.............                                                         |  19%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |................                                                      |  23%
+    ## label: unnamed-chunk-29
+    ##   |                                                                              |...................                                                   |  27%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |......................                                                |  31%
+    ## label: unnamed-chunk-30
+    ##   |                                                                              |........................                                              |  35%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |...........................                                           |  38%
+    ## label: unnamed-chunk-31
+    ##   |                                                                              |..............................                                        |  42%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |................................                                      |  46%
+    ## label: unnamed-chunk-32 (with options) 
+    ## List of 2
+    ##  $ fig.width : num 7
+    ##  $ fig.height: num 8
+
+    ##   |                                                                              |...................................                                   |  50%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |......................................                                |  54%
+    ## label: unnamed-chunk-33
+    ##   |                                                                              |........................................                              |  58%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |...........................................                           |  62%
+    ## label: unnamed-chunk-34 (with options) 
+    ## List of 2
+    ##  $ fig.width : num 7
+    ##  $ fig.height: num 6
+
+    ##   |                                                                              |..............................................                        |  65%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |................................................                      |  69%
+    ## label: unnamed-chunk-35
+
+    ##   |                                                                              |...................................................                   |  73%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |......................................................                |  77%
+    ## label: unnamed-chunk-36
+
+    ##   |                                                                              |.........................................................             |  81%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |...........................................................           |  85%
+    ## label: unnamed-chunk-37 (with options) 
+    ## List of 2
+    ##  $ fig.width : num 10
+    ##  $ fig.height: num 12
+
+    ##   |                                                                              |..............................................................        |  88%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |.................................................................     |  92%
+    ## label: unnamed-chunk-38
+
+    ##   |                                                                              |...................................................................   |  96%
+    ##   ordinary text without R code
+    ## 
+    ##   |                                                                              |......................................................................| 100%
+    ## label: unnamed-chunk-39
+
+    ## output file: main.knit.md
+
+    ## "C:/Program Files/RStudio/bin/pandoc/pandoc" +RTS -K512m -RTS main.utf8.md --to markdown_github --from markdown+autolink_bare_uris+tex_math_single_backslash --output main.md --standalone
+
+    ## 
+    ## Output created: main.md
+
+SESSION INFO
+============
+
+``` r
 sessionInfo()
 ```
+
+    ## R version 4.0.2 (2020-06-22)
+    ## Platform: x86_64-w64-mingw32/x64 (64-bit)
+    ## Running under: Windows 10 x64 (build 18362)
+    ## 
+    ## Matrix products: default
+    ## 
+    ## locale:
+    ## [1] LC_COLLATE=English_United States.1252 
+    ## [2] LC_CTYPE=English_United States.1252   
+    ## [3] LC_MONETARY=English_United States.1252
+    ## [4] LC_NUMERIC=C                          
+    ## [5] LC_TIME=English_United States.1252    
+    ## 
+    ## attached base packages:
+    ## [1] grid      stats     graphics  grDevices utils     datasets  methods  
+    ## [8] base     
+    ## 
+    ## other attached packages:
+    ## [1] VennDiagram_1.6.20   futile.logger_1.4.3  ComplexHeatmap_2.4.3
+    ## [4] reshape2_1.4.4      
+    ## 
+    ## loaded via a namespace (and not attached):
+    ##  [1] Rcpp_1.0.5           cluster_2.1.0        knitr_1.29          
+    ##  [4] magrittr_1.5         clue_0.3-57          colorspace_1.4-1    
+    ##  [7] rjson_0.2.20         rlang_0.4.7          stringr_1.4.0       
+    ## [10] plyr_1.8.6           tools_4.0.2          parallel_4.0.2      
+    ## [13] circlize_0.4.10      xfun_0.15            png_0.1-7           
+    ## [16] lambda.r_1.2.4       htmltools_0.5.0      yaml_2.2.1          
+    ## [19] digest_0.6.25        crayon_1.3.4         formatR_1.7         
+    ## [22] RColorBrewer_1.1-2   futile.options_1.0.1 prettydoc_0.3.1     
+    ## [25] GlobalOptions_0.1.2  shape_1.4.4          evaluate_0.14       
+    ## [28] rmarkdown_2.3        stringi_1.4.6        compiler_4.0.2      
+    ## [31] GetoptLong_1.0.2
