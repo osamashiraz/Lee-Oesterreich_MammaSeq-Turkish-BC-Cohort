@@ -5,11 +5,13 @@ date: "`r Sys.Date()`"
 output:
   prettydoc::html_pretty:
     theme: Cayman
+  html_document:
+    keep_md: TRUE
 ---
 
 
 main.RMD contains the code used to generate data presented in following work:
-(Identifying Genomic Alterations in Stage IV Breast Cancer Patients using MammaSeqTM: An International Collaborative Study)[https://www.sciencedirect.com/science/article/abs/pii/S1526820920302135]
+(Identifying Genomic Alterations in Stage IV Breast Cancer Patients using MammaSeq<sup>TM</sup>: An International Collaborative Study)[https://www.sciencedirect.com/science/article/abs/pii/S1526820920302135]
 
 
 
