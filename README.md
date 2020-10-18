@@ -1,4 +1,4 @@
-(Github.io page)[ https://osamashiraz.github.io/Turkish-BC-Study/]
+[Github.io page](https://osamashiraz.github.io/Turkish-BC-Study/)
 
 main.RMD contains the code used to generate data presented in following
 work: (Identifying Genomic Alterations in Stage IV Breast Cancer
